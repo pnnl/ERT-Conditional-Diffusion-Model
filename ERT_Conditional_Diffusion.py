@@ -220,66 +220,17 @@ def check_param_bounds(param, limits):
 #%% Data loading and Conditional Model Training
 
 # Main training and sampling script
-ert_sim_file = '/Users/hern856/Codes/Inversion_Modeling/Data_generation/sim_ert_sobol_5000.npy'
-sim_param_file = '/Users/hern856/Codes/Inversion_Modeling/Data_generation/sim_param_sobol_5000.npy'
-field_ert_file = '/Users/hern856/Codes/Pflotran_Sim/Transformer Surrogate/Field_ERT_for_Jose_2_day.npy'
+ert_sim_file = 'sim_ert_sobol_5000.npy'
+sim_param_file = 'sim_param_sobol_5000.npy'
 # Load the data.
 sim_param = np.load(sim_param_file)  # Shape: (5076, 29, 1)
 ert_sim = np.load(ert_sim_file)        # Shape: (5076, 4693, 14)
-field_ert = np.load(field_ert_file)    # Shape: (4693, 14)
-print ("Field ERT data shape:", field_ert.shape)
-print ('ERT simulation data shape:', ert_sim.shape)
-
-
-#%% Plot field ERT data
-
-ert_surveys = 14
-etr_measurements = int(field_ert.shape[1]/ert_surveys)
-number_of_simulations = field_ert.shape[0]
-print ('Number of ERT surveys:', ert_surveys)
-print ('Number of ERT measurements:', etr_measurements)
-print ('Number of simulations:', number_of_simulations)
-
-new_arrange = []
-for time in range(ert_surveys):
-    time_start = time * etr_measurements
-    time_end = time_start + etr_measurements
-    ert_measurement = field_ert[:,time_start:time_end]
-    print (f"Time step {time}: {ert_measurement.shape}")
-    new_arrange.append(ert_measurement)
-ert_field = np.array(new_arrange).T.reshape(number_of_simulations,etr_measurements, ert_surveys)
-print ('Field ERT data shape:', ert_field.shape)
-
-plt.figure(figsize=(4, 4),dpi=250)
-plt.imshow(ert_field[0], aspect='auto', origin='lower', cmap='jet')
-cbar = plt.colorbar()
-cbar.set_label('Transfer resistance [Ω]')
-plt.xlabel('ERT surveys')
-plt.ylabel('ERT measurements')
-plt.title('Field ERT data')
-plt.show()
-
-sim_ert_min = np.min(ert_sim)
-sim_ert_max = np.max(ert_sim)
-print(f"Simulation ERT data range: [{sim_ert_min:.4f}, {sim_ert_max:.4f}]")
-ert_field_min = np.min(ert_field)
-ert_field_max = np.max(ert_field)
-print(f"Field ERT data range: [{ert_field_min:.4f}, {ert_field_max:.4f}]")
-
-#Check if the field ERT data is within the simulation range
-if ert_field_min < sim_ert_min or ert_field_max > sim_ert_max:
-    print("Field ERT data is outside the simulation range. Normalization will be affected.")
-# Normalize the ERT simulation data to [0, 1] range.
 
 #%% 
-
 a, b = 0.0, 1.0
 
 # Apply min-max normalization to ensure data is in [a, b].
-# Here, we assume the parameters are originally in [a, b] and we use that directly.
-# If not, first rescale your data to [0,1] and set a=0, b=1.
 param_scaler = MinMaxScaler(feature_range=(a, b))
-# Flatten, fit, then reshape simulation parameters:
 sim_param_2d = sim_param.reshape(sim_param.shape[0], -1)
 sim_param_scaled = param_scaler.fit_transform(sim_param_2d)
 sim_param_scaled = sim_param_scaled.reshape(sim_param.shape)
@@ -293,15 +244,14 @@ if sim_param_scaled.ndim == 3 and sim_param_scaled.shape[2] == 1:
     raw_params = np.squeeze(sim_param_scaled, axis=2)
 else:
     raw_params = sim_param.copy()
-# Convert raw parameters to torch and reparameterize (map [a, b] into the unconstrained space)
-unc_params = transform_to_unconstrained(raw_params, a, b)
 
+unc_params = transform_to_unconstrained(raw_params, a, b)
 for i in range(unc_params.shape[1]):
     plt.figure(figsize=(6, 4), dpi=250)
     plt.hist(sim_param_scaled[:,i,:], bins=100, density=True, alpha=0.5, color='red', label='Constrained')
     plt.figure(figsize=(6, 4), dpi=250)
     plt.hist(unc_params[:,i], bins=100, density=True, alpha=0.5, color='blue', label='Unconstrained')
-
+    plt.legend()
 
 # Similarly, standardize the ERT simulation data.
 ert_scaler = MinMaxScaler(feature_range=(0, 1))
@@ -313,17 +263,6 @@ ert_sim_scaled = ert_sim_scaled.reshape(ert_shape)
 norm_ert_sim_min = np.min(ert_sim_scaled)
 norm_ert_sim_max = np.max(ert_sim_scaled)
 print(f"Normalized ERT simulation data range: [{norm_ert_sim_min:.4f}, {norm_ert_sim_max:.4f}]")
-
-# Apply the same transformation to the field ERT data.
-ert_field_2d = ert_field.reshape(ert_field.shape[0], -1)
-ert_field_scaled = ert_scaler.transform(ert_field_2d)
-ert_field_scaled = ert_field_scaled.reshape(ert_field.shape)
-# Check the shape of the scaled ERT data
-print(f"Scaled ERT simulation data shape: {ert_sim_scaled.shape}")
-print(f"Scaled ERT field data shape: {ert_field_scaled.shape}")
-norm_ert_field_min = np.min(ert_field_scaled)
-norm_ert_field_max = np.max(ert_field_scaled)
-print(f"Normalized ERT field data range: [{norm_ert_field_min:.4f}, {norm_ert_field_max:.4f}]")
 
 
 # Create the diffusion dataset using the reparameterized simulation targets.
@@ -344,11 +283,11 @@ device = torch.device("mps" if torch.mps.is_available() else "cpu")
 print("Using device:", device)
 
 # Determine parameter dimension.
-param_dim = dataset.params.shape[1]  # e.g., 29
+param_dim = dataset.params.shape[1] 
 model = ConditionalDiffusionModel(param_dim=param_dim, hidden_dim=128).to(device)
 
 # Diffusion schedule.
-T = 20000
+T = 500
 betas, alphas, alpha_bar = get_diffusion_schedule(T, beta_start=1e-4, beta_end=0.02, device=device)
 alpha_bar = alpha_bar.to(device)
 
@@ -425,16 +364,6 @@ plt.ylabel('MSE Loss')
 plt.legend()
 plt.show()
 
-noise_figure = torch.randn_like(x0).cpu().numpy()
-noise_figure_reshape = noise_figure[0,:].reshape(29,1)
-
-plt.figure(figsize=(1, 4),dpi=150)
-plt.imshow(noise_figure_reshape, aspect='auto',origin='lower',cmap='gray',alpha=1)
-plt.xticks([])
-plt.yticks([])
-plt.colorbar()
-plt.show()
-
 #%% Sampling: generate simulation parameters from a given condition.
 
 def load_best_model(path, model, optimizer=None, map_location=None):
@@ -507,13 +436,6 @@ print (params_realizations.shape)
 print (ert_true_param_inv.shape)
 print (ert_sim_inv.shape)
 
-#np.save("params_realizations.npy", params_realizations)
-#np.save("ert_true_param_inv.npy", ert_true_param_inv)
-#np.save("ert_sim_inv.npy", ert_sim_inv)
-
-params_realizations = np.load("params_realizations.npy")
-ert_true_param_inv = np.load("ert_true_param_inv.npy")
-ert_sim_inv = np.load("ert_sim_inv.npy")
 
 #%% Perform simulations for the generated parameters
 import os
@@ -709,69 +631,6 @@ for param in range(29):
         #plt.show()
 
 
-
-i=0
-sim_data_test = forward_runner.run_simulations_with_params_single(conditional_param_sample, i)
-sim_data_test = np.vstack(sim_data_test)
-
-ert_surveys = 14
-etr_measurements = int(sim_data_test.shape[0]/ert_surveys)
-total_sim = i+1
-print ('Total number of simulations:', total_sim)
-print ('Number of ERT surveys:', ert_surveys)
-print ('Number of ERT measurements:', etr_measurements)
-
-sim_data_array = np.zeros((total_sim,etr_measurements,ert_surveys))
-param_data_array = np.zeros((total_sim, sim_param.shape[1], 1))
-
-
-for sim_idx in range(total_sim):
-    sim_ert_instance = sim_data_test[sim_idx,:].squeeze()
-    new_arrange = []
-    for time_step in range(ert_surveys):
-        time_start = time_step * etr_measurements
-        time_end = time_start + etr_measurements  
-        measurement_data = sim_data_test[time_start:time_end]  
-        new_arrange.append(measurement_data)
-    sim_out = np.array(new_arrange).T
-    sim_inp = sim_param[sim_idx,:].reshape(-1, 1)
-
-    sim_data_array[sim_idx,:,:] = sim_out
-    param_data_array[sim_idx,:] = sim_inp
-
-print ('Simulated ERT data shape:', sim_data_array.shape)
-print ('Simulated parameter data shape:', param_data_array.shape)
-
-plt.figure(figsize=(4, 4),dpi=250)
-plt.imshow(sim_data_array[0,:,:], aspect='auto',origin='lower',cmap='jet')
-cbar = plt.colorbar()
-cbar.set_label('Transfer resistance [Ω]') 
-plt.xlabel('ERT surveys')
-plt.ylabel('ERT measurements')
-plt.title('Conditional ERT data')
-plt.show()
-
-plt.figure(figsize=(4, 4),dpi=250)
-plt.imshow(conditional_ert_sample, aspect='auto',origin='lower',cmap='jet')
-cbar = plt.colorbar()
-cbar.set_label('Transfer resistance [Ω]') 
-plt.xlabel('ERT surveys')
-plt.ylabel('ERT measurements')
-plt.title('Conditional ERT data')
-plt.show()  
-
-mse_conditiona = mean_squared_error(conditional_ert_sample, sim_data_array[0,:,:])
-print ('MSE:', mse_conditiona)
-
-plt.figure(figsize=(6, 4),dpi=250)
-sns.kdeplot(conditional_ert_sample.flatten(), color='blue', label='True ERT data')
-sns.kdeplot(sim_data_array[0,:,:].flatten(), color='red', label='Simulated ERT data')
-plt.xlabel('ERT data')
-plt.ylabel('Frequency')
-plt.legend()
-plt.show()
-
-
 #%% Run simulations for the generated parameters
 
 results_dir = f'/Users/hern856/Codes/Pflotran_Sim/Transformer Surrogate/Inversion_results/Conditional_Sample_{conditional_idx}'
@@ -793,79 +652,6 @@ sim_manager = SimulationManager(max_simulation_time=3600)
 completed_sims = 0
 
 cond_paramts = params_realizations[:,conditional_idx,:]
-
-conditional_mode_param = []
-for param in range(29):
-    plt.figure(figsize=(6, 4),dpi=250)
-    cond_param_dist = cond_paramts[:, param]
-    cond_param_true = conditional_param_sample[param]
-    mode_param = mode_kde_calculation(cond_param_dist)
-    conditional_mode_param.append(mode_param)
-    #confidence_interval = np.percentile(param_dist, [2.5, 97.5])
-    true_val_in_interval = confidence_interval[0] <= param_true <= confidence_interval[1]
-    #print(f"Parameter {param}: True={param_true:.4f}, Mode={mode_param:.4f}, 95% CI={confidence_interval}, True in CI={true_val_in_interval}")
-    #plt.hist(cond_param_dist, bins=15, density=True, alpha=0.3, color=f'C{0}', label=f'ERT Case: {case}')
-    sns.kdeplot(data=cond_param_dist,color=f'C0', fill=False, alpha=0.5)
-    plt.axvline(cond_param_true,linewidth = 1, linestyle='--',color=f'black', label=f'True parameter')
-    #plt.axvline(mode_param,linewidth = 1, linestyle='--', color='purple', label=f'Mode')
-    #plt.axvline(limits[param][0], color=f'C{sample_idx}', linestyle='--', label='Parameter bounds', alpha=0.5)
-    #plt.axvline(limits[param][1], color=f'C{sample_idx}', linestyle='--', alpha=0.5)
-    #plt.axvline(confidence_interval[0], linestyle='--',color = 'green', label='95 CI', alpha=0.5)
-    #plt.axvline(confidence_interval[1], linestyle='--',color = 'green', alpha=0.5)
-    plt.grid(True, linestyle='--', alpha=0.4)
-    plt.xlabel(f"{names[param]}")
-    plt.legend()
-    #plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_conditional_param_{param}.png", bbox_inches='tight')
-    #plt.show()
-
-conditional_mode_param = np.array(conditional_mode_param)
-print (conditional_mode_param.shape)
-print (cond_paramts.shape)
-
-
-images = []
-plt.figure(figsize=(0.78, 5), dpi=250)
-for realization in range(uncertainty_samples):
-    buf = io.BytesIO()
-    plt.imshow(cond_paramts[realization,:].reshape(-1,1), aspect='auto', origin='lower', cmap='jet')
-    plt.xticks([])
-    ax = plt.gca()
-    ax.yaxis.tick_right()
-    ax.yaxis.set_label_position("right")
-    plt.yticks(range(len(names)), names)
-    plt.xlabel('GenAI\nParameters')
-    plt.tight_layout()
-    plt.savefig(buf, format='png', bbox_inches='tight')
-    buf.seek(0)
-    image = imageio.imread(buf)
-    images.append(image)
-    plt.clf()
-plt.close()
-imageio.mimsave('parameter_evolution.gif', images,loop=0, fps=4)
-
-
-images = []
-plt.figure(figsize=(0.78, 5), dpi=250)
-for realization in range(uncertainty_samples):
-    buf = io.BytesIO()
-    rand_param_vector = np.random.rand(29).reshape(-1,1)
-    plt.imshow(rand_param_vector, aspect='auto', origin='lower', cmap='Greys')
-    plt.xticks([])
-    ax = plt.gca()
-    ax.yaxis.tick_right()
-    ax.yaxis.set_label_position("right")
-    plt.yticks(range(len(names)), names)
-    plt.xlabel('Gaussian\nnoise')
-    plt.tight_layout()
-    plt.savefig(buf, format='png', bbox_inches='tight')
-    buf.seek(0)
-    image = imageio.imread(buf)
-    images.append(image)
-    plt.clf()
-plt.close()
-imageio.mimsave('Gaussian_noise.gif', images,loop=0, fps=4)
-
-#%% Simulation of Mode Paramters only. 
 
 for (i, params) in enumerate(cond_paramts):
  
@@ -907,6 +693,7 @@ for (i, params) in enumerate(cond_paramts):
         sim_manager.save_failed_simulation(i, params, str(e))
         continue
 
+#%% Load and visualize the simulation results
 
 folder_path = "/Users/hern856/Codes/Pflotran_Sim/Transformer Surrogate/simulation_results_20250731_110916_Conditional_idx_0"
 sim_ert, sim_param = load_simulation_data(folder_path,uncertainty_samples)
@@ -957,26 +744,6 @@ for sim_idx in range(total_sim):
     plt.show()
 
 
-images = []
-plt.figure(figsize=(5, 5), dpi=250)
-for sim_idx in range(total_sim):
-    buf = io.BytesIO()
-
-    plt.imshow(sim_data[sim_idx,:,:], aspect='auto', origin='lower', cmap='jet')
-    cbar = plt.colorbar()
-    # Move label further out and rotate it
-    plt.title('Simulated Transfer resistance [Ω]')
-    plt.xlabel('ERT surveys')
-    plt.ylabel('ERT measurements')
-
-    plt.savefig(buf, format='png', bbox_inches=None)
-    buf.seek(0)
-    image = imageio.imread(buf)
-    images.append(image)
-    plt.clf()
-plt.close()
-imageio.mimsave('ert_simulations.gif', images, loop=0, fps=4)
-
 ensemble_mode = np.zeros((4693, 14))
 # Determine the global min and max values
 data_min = np.min(sim_data)
@@ -994,32 +761,6 @@ for i in range(sim_data.shape[1]):
         point_mode = x_range[max_index]
         ensemble_mode[i, j] = point_mode
 
-
-# Select random indices
-for _ in range(6):
-    i = random.randint(0, 4692)
-    j = random.randint(0, 13)
-    point = sim_data[:, i, j]
-    
-    # Plotting
-    plt.figure(figsize=(6, 4), dpi=250)
-    plt.hist(point, bins=30, density=True, alpha=0.5)
-    
-    # Compute KDE
-    kde = stats.gaussian_kde(point)
-    x_range = np.linspace(point.min(), point.max(), 1000)
-    kde_values = kde(x_range)
-    plt.plot(x_range, kde_values, label='KDE')
-    
-    # Plot mode, mean, median
-    plt.axvline(ensemble_mode[i, j], color='purple', linestyle='--', label='Mode')
-    plt.axvline(np.mean(point), color='blue', linestyle='--', label='Mean')
-    plt.axvline(np.median(point), color='green', linestyle='--', label='Median')
-    plt.legend()
-    plt.title(f'ERT Measurment: {i}, ERT Survey {j}')
-    plt.ylabel('Density')
-    plt.xlabel('Transfer resistance [Ω]')
-    plt.show()
 
 
 #%% SWWE per realization
@@ -1042,8 +783,6 @@ for sim in range(sim_data.shape[0]):
     WSSE_sim.append(WSSE_time)
 WSSE_sim = np.array(WSSE_sim)  # Shape: (total_sim, ert_surveys)
 print (WSSE_sim.shape)
-
-
 
 wsse_total = WSSE_sim.sum(axis=1)
 sorted_indices = np.argsort(wsse_total)
@@ -1146,78 +885,6 @@ avg_percentage_error_mean = np.mean(percentage_error_mean)
 avg_percentage_error_mode = np.mean(percentage_error_mode)
 
 
-A_sd_mean = 0.1
-B_sd_mean = 0.01
-WSSE_mean, WSE_mean = WSSE_metric(A_sd_mean, B_sd_mean, ensemble_mean, conditional_ert_sample)
-
-
-plt.imshow(WSE_mean, cmap='jet', aspect='auto', origin='lower')
-plt.colorbar(label='WSE')
-plt.title('WSE Mean')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')
-
-A_sd_mode = 0.05
-B_sd_mode = 0.1
-WSSE_mode, WSE_mode = WSSE_metric(A_sd_mode, B_sd_mode, ensemble_mode, conditional_ert_sample)
-
-
-plt.imshow(WSE_mode, cmap='jet', aspect='auto', origin='lower')
-plt.colorbar(label='WSE')
-plt.title('WSE Mode')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')
-
-A_range = np.linspace(0.05, 0.1, 10)
-B_range = np.linspace(0.001, 0.1, 10)
-WSSE_mean_grid = np.zeros((len(A_range), len(B_range)))
-for i, A in enumerate(A_range):
-    for j, B in enumerate(B_range):
-        WSSE_mean_grid[i, j], _ = WSSE_metric(A, B, ensemble_mean, conditional_ert_sample)  
-
-WSSE_mode_grid = np.zeros((len(A_range), len(B_range)))
-for i, A in enumerate(A_range):
-    for j, B in enumerate(B_range):
-        WSSE_mode_grid[i, j], _ = WSSE_metric(A, B, ensemble_mode, conditional_ert_sample)
-
-# Find A, B for WSSE_mean_grid closest to 1
-idx_mean = np.unravel_index(np.argmin(np.abs(WSSE_mean_grid - 1)), WSSE_mean_grid.shape)
-A_closest_mean = A_range[idx_mean[0]]
-B_closest_mean = B_range[idx_mean[1]]
-wsse_closest_mean = WSSE_mean_grid[idx_mean]
-print(f"WSSE_mean_grid: Closest to 1 at A={A_closest_mean:.4f}, B={B_closest_mean:.4f}, WSSE={wsse_closest_mean:.4f}")
-WSSE_mean_close, WSE_mean_close = WSSE_metric(A_closest_mean, B_closest_mean, ensemble_mean, conditional_ert_sample)
-
-# Find A, B for WSSE_mode_grid closest to 1
-idx_mode = np.unravel_index(np.argmin(np.abs(WSSE_mode_grid - 1)), WSSE_mode_grid.shape)
-A_closest_mode = A_range[idx_mode[0]]
-B_closest_mode = B_range[idx_mode[1]]
-wsse_closest_mode = WSSE_mode_grid[idx_mode]
-print(f"WSSE_mode_grid: Closest to 1 at A={A_closest_mode:.4f}, B={B_closest_mode:.4f}, WSSE={wsse_closest_mode:.4f}")
-WSSE_mode_close, WSE_mode_close = WSSE_metric(A_closest_mode, B_closest_mode, ensemble_mode, conditional_ert_sample)
-
-plt.figure(figsize=(8, 6), dpi=250)
-plt.imshow(WSSE_mode_grid, extent=(B_range[0], B_range[-1], A_range[0], A_range[-1]), aspect='auto', origin='lower')
-plt.colorbar(label='WSSE')
-plt.xlabel('B')
-plt.ylabel('A')
-plt.title('WSSE Mode Grid')
-plt.scatter(B_closest_mode, A_closest_mode, color='red', label='Selected A, B')
-plt.legend()
-plt.show()
-
-plt.figure(figsize=(8, 6), dpi=250)
-plt.imshow(WSSE_mean_grid, extent=(B_range[0], B_range[-1], A_range[0], A_range[-1]), aspect='auto', origin='lower')
-plt.colorbar(label='WSSE')
-plt.xlabel('B')
-plt.ylabel('A')
-plt.title('WSSE Mean Grid')
-plt.scatter(B_closest_mean, A_closest_mean, color='red', label='Selected A, B')
-plt.legend()
-plt.show()
-
-
-
 plt.figure(figsize=(6, 4), dpi=250)
 sns.kdeplot(ensemble_mean.flatten(), label='Ensemble Mean')
 sns.kdeplot(conditional_ert_sample.flatten(), label='Conditional ERT')
@@ -1225,7 +892,7 @@ sns.kdeplot(ensemble_mode.flatten(), label='Ensemble Mode')
 plt.xlabel('Transfer resistance [Ω]')
 plt.ylabel('Density')
 plt.legend()
-plt.title('Distribution of MSE between Ensamble and Conditional ERT')
+plt.title('Distribution of MSE between Ensemble and Conditional ERT')
 #plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_distributions.png", bbox_inches='tight')
 plt.show()
 
@@ -1260,7 +927,6 @@ plt.show()
 v_min = np.min([ensemble_mean.min(), conditional_ert_sample.min()])
 v_max = np.max([ensemble_mean.max(), conditional_ert_sample.max()])
 
-
 mse_distribution = []
 for sim_idx in range(sim_data.shape[0]):
     mse = mean_squared_error(conditional_ert_sample.flatten(), sim_data[sim_idx].flatten())
@@ -1285,7 +951,6 @@ print ('MSE Mean:', mse_mean)
 
 print ('RMSE Mode:', rmse_mode)
 print ('MSE Mode:', mse_mode)
-
 
 
 font_size = 12
@@ -1372,169 +1037,6 @@ cbar8.ax.tick_params(labelsize=16)
 plt.tight_layout()
 #plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_reorganized_results.png", bbox_inches='tight', dpi=250)
 plt.show()
-
-
-
-fig, axs = plt.subplots(3, 3, figsize=(24, 21), dpi=250)
-v_min = min(ensemble_mean.min(), conditional_ert_sample.min(), ensemble_mode.min())
-v_max = max(ensemble_mean.max(), conditional_ert_sample.max(), ensemble_mode.max())
-im1 = axs[0, 0].imshow(conditional_ert_sample, aspect='auto', origin='lower', cmap='jet', vmin=v_min, vmax=v_max)
-axs[0, 0].set_title("Conditional ERT", fontsize=16)
-axs[0, 0].set_xlabel("ERT Surveys", fontsize=16)
-axs[0, 0].set_ylabel("ERT Measurements", fontsize=16)
-axs[0, 0].tick_params(axis='both', which='major', labelsize=14)
-cbar1 = plt.colorbar(im1, ax=axs[0, 0], shrink=1.0, aspect=20)
-cbar1.set_label('Transfer resistance [Ω]', fontsize=14)
-cbar1.ax.tick_params(labelsize=12)
-im2 = axs[0, 1].imshow(ensemble_mean, aspect='auto', origin='lower', cmap='jet', vmin=v_min, vmax=v_max)
-axs[0, 1].set_title("Ensemble Mean", fontsize=16)
-axs[0, 1].set_xlabel("ERT Surveys", fontsize=16)
-axs[0, 1].set_ylabel("ERT Measurements", fontsize=16)
-axs[0, 1].tick_params(axis='both', which='major', labelsize=14)
-cbar2 = plt.colorbar(im2, ax=axs[0, 1], shrink=1.0, aspect=20)
-cbar2.set_label('Transfer resistance [Ω]', fontsize=14)
-cbar2.ax.tick_params(labelsize=12)
-im3 = axs[0, 2].imshow(ensemble_mode, aspect='auto', origin='lower', cmap='jet', vmin=v_min, vmax=v_max)
-axs[0, 2].set_title("Ensemble Mode", fontsize=16)
-axs[0, 2].set_xlabel("ERT Surveys", fontsize=16)
-axs[0, 2].set_ylabel("ERT Measurements", fontsize=16)
-axs[0, 2].tick_params(axis='both', which='major', labelsize=14)
-cbar3 = plt.colorbar(im3, ax=axs[0, 2], shrink=1.0, aspect=20)
-cbar3.set_label('Transfer resistance [Ω]', fontsize=14)
-cbar3.ax.tick_params(labelsize=12)
-sns.kdeplot(WSE_mean_close.flatten(), color='blue', label='Ensemble Mean', ax=axs[1, 0])
-sns.kdeplot(WSE_mode_close.flatten(), color='red', label='Ensemble Mode', ax=axs[1, 0])
-axs[1, 0].set_ylabel('Density', fontsize=16)
-axs[1, 0].set_xlabel('WSE', fontsize=16)
-axs[1, 0].set_title('Difference Distribution', fontsize=16)
-axs[1, 0].grid(True, alpha=0.3)
-axs[1, 0].tick_params(axis='both', which='major', labelsize=16)
-axs[1, 0].legend(fontsize=16)
-v_max_swe = max(WSE_mean_close.max(), WSE_mode_close.max())
-v_min_swe = min(WSE_mean_close.min(), WSE_mode_close.min())
-im4 = axs[1, 1].imshow(
-    WSE_mean_close,
-    aspect='auto',
-    origin='lower',
-    cmap='magma')
-axs[1, 1].set_title("WSE (Mean)", fontsize=16)
-axs[1, 1].set_xlabel("ERT Surveys", fontsize=16)
-axs[1, 1].set_ylabel("ERT Measurements", fontsize=16)
-axs[1, 1].tick_params(axis='both', which='major', labelsize=14)
-cbar4 = plt.colorbar(im4, ax=axs[1, 1], shrink=1.0, aspect=20)
-cbar4.set_label('WSE', fontsize=16)
-cbar4.ax.tick_params(labelsize=12)
-im5 = axs[1, 2].imshow(
-    WSE_mode_close,
-    aspect='auto',
-    origin='lower',
-    cmap='magma')
-axs[1, 2].set_title("WSE (Mode)", fontsize=16)
-axs[1, 2].set_xlabel("ERT Surveys", fontsize=16)
-axs[1, 2].set_ylabel("ERT Measurements", fontsize=16)
-axs[1, 2].tick_params(axis='both', which='major', labelsize=16)
-cbar5 = plt.colorbar(im5, ax=axs[1, 2], shrink=1.0, aspect=20)
-cbar5.set_label('WSE', fontsize=16)
-cbar5.ax.tick_params(labelsize=16)
-v_min_quantiles = min(P25.min(), P50.min(), P75.min())
-v_max_quantiles = max(P25.max(), P50.max(), P75.max())
-im6 = axs[2, 0].imshow(P25, aspect='auto', origin='lower', cmap='jet', vmin=v_min_quantiles, vmax=v_max_quantiles)
-axs[2, 0].set_title('25th Percentile (P25)', fontsize=16)
-axs[2, 0].set_xlabel('ERT Surveys', fontsize=16)
-axs[2, 0].set_ylabel('ERT Measurements', fontsize=16)
-axs[2, 0].tick_params(axis='both', which='major', labelsize=16)
-cbar6 = plt.colorbar(im6, ax=axs[2, 0], shrink=1.0, aspect=20)
-cbar6.set_label('Transfer resistance [Ω]', fontsize=16)
-cbar6.ax.tick_params(labelsize=16)
-im7 = axs[2, 1].imshow(P50, aspect='auto', origin='lower', cmap='jet', vmin=v_min_quantiles, vmax=v_max_quantiles)
-axs[2, 1].set_title('50th Percentile (P50 - Median)', fontsize=16)
-axs[2, 1].set_xlabel('ERT Surveys', fontsize=16)
-axs[2, 1].set_ylabel('ERT Measurements', fontsize=16)
-axs[2, 1].tick_params(axis='both', which='major', labelsize=16)
-cbar7 = plt.colorbar(im7, ax=axs[2, 1], shrink=1.0, aspect=20)
-cbar7.set_label('Transfer resistance [Ω]', fontsize=16)
-cbar7.ax.tick_params(labelsize=16)
-im8 = axs[2, 2].imshow(P75, aspect='auto', origin='lower', cmap='jet', vmin=v_min_quantiles, vmax=v_max_quantiles)
-axs[2, 2].set_title('75th Percentile (P75)', fontsize=16)
-axs[2, 2].set_xlabel('ERT Surveys', fontsize=16)
-axs[2, 2].set_ylabel('ERT Measurements', fontsize=16)
-axs[2, 2].tick_params(axis='both', which='major', labelsize=16)
-cbar8 = plt.colorbar(im8, ax=axs[2, 2], shrink=1.0, aspect=20)
-cbar8.set_label('Transfer resistance [Ω]', fontsize=16)
-cbar8.ax.tick_params(labelsize=16)
-plt.tight_layout()
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_reorganized_results.png", bbox_inches='tight', dpi=250)
-plt.show()
-
-#%% Modes simulations 
-
-i=0
-sim_data_mode = forward_runner.run_simulations_with_params_single(conditional_mode_param, i)
-sim_data_mode = np.vstack(sim_data_mode)
-
-
-ert_surveys = 14
-etr_measurements = int(sim_data_test.shape[0]/ert_surveys)
-total_sim = i+1
-print ('Total number of simulations:', total_sim)
-print ('Number of ERT surveys:', ert_surveys)
-print ('Number of ERT measurements:', etr_measurements)
-
-
-sim_data_mode_array = np.zeros((total_sim,etr_measurements,ert_surveys))
-
-for sim_idx in range(total_sim):
-    sim_ert_instance = sim_data_mode[sim_idx,:].squeeze()
-    new_arrange = []
-    for time_step in range(ert_surveys):
-        time_start = time_step * etr_measurements
-        time_end = time_start + etr_measurements  
-        measurement_data = sim_data_mode[time_start:time_end]  
-        new_arrange.append(measurement_data)
-    sim_out = np.array(new_arrange).T
-    sim_inp = sim_param[sim_idx,:].reshape(-1, 1)
-
-    sim_data_mode_array[sim_idx,:,:] = sim_out
-
-print ('Simulated ERT data shape:', sim_data_mode_array.shape)
-print ('Simulated parameter data shape:', conditional_mode_param.shape)
-
-plt.imshow(sim_data_mode_array[0,:,:], aspect='auto',origin='lower',cmap='jet')
-plt.colorbar()
-plt.xlabel('ERT surveys')
-plt.ylabel('ERT measurements')
-plt.title('Simulated ERT data')
-plt.show()
-
-plt.imshow(conditional_ert_sample, aspect='auto',origin='lower',cmap='jet')
-plt.colorbar()
-plt.xlabel('ERT surveys')
-plt.ylabel('ERT measurements')
-plt.title('True ERT data')
-plt.show()  
-
-diff_mode = conditional_ert_sample - sim_data_mode_array[0,:,:]
-vmax_mode = np.max(np.abs(diff_mode))
-
-plt.figure(figsize=(6, 4), dpi=250)
-plt.imshow(diff_mode, aspect='auto',origin='lower',cmap='bwr', vmin=-vmax_mode, vmax=vmax_mode)
-plt.colorbar()
-plt.xlabel('ERT surveys')
-plt.ylabel('ERT measurements')
-plt.title('Difference between True and Simulated ERT data')
-plt.show()  
-
-mse_conditiona = mean_squared_error(conditional_ert_sample, sim_data_mode_array[0,:,:])
-print ('MSE:', mse_conditiona)
-
-plt.figure(figsize=(6, 4),dpi=250)
-sns.kdeplot(conditional_ert_sample.flatten(), color='blue', label='True ERT data')
-sns.kdeplot(sim_data_mode_array[0,:,:].flatten(), color='red', label='Simulated ERT data')
-plt.xlabel('ERT data')
-plt.ylabel('Frequency')
-plt.legend()
-plt.show()
-
 
 #%% Uncertainty evaluation
 model.eval()
@@ -1781,381 +1283,3 @@ df = pd.DataFrame({
     'Goodness': param_goodness
 })
 df.to_csv('Parameter_uncertainty_metrics.csv', index=False)
-#%% MSE Analysis
-
-
-mse_sample_size = 15
-mse_sorted_indices = np.argsort(mse_distribution)
-all_sorted_mse = np.sort(mse_distribution)
-top_mse_indices = mse_sorted_indices[:mse_sample_size]
-top_mse_values = [mse_distribution[i] for i in top_mse_indices]
-top_simulations = sim_data[top_mse_indices]   
-top_parameters = param_data[top_mse_indices]
-print ("Max MSE:", np.max(top_mse_values))
-
-plt.figure(figsize=(6, 4), dpi=250)
-plt.scatter(np.arange(len(all_sorted_mse)),all_sorted_mse, color='blue', s=8, label='All Simulations')
-plt.xlabel('Simulation Index')
-plt.ylabel('MSE')
-plt.yscale('log')
-plt.grid(True, alpha=0.3)
-plt.show()
-
-top_mean_simulations = np.mean(top_simulations, axis=0)
-top_std_simulations = np.std(top_simulations, axis=0)
-top_p2_5_simulations = np.percentile(top_simulations, 5, axis=0)
-top_p50_simulations = np.percentile(top_simulations, 50, axis=0)
-top_p97_5_simulations = np.percentile(top_simulations, 95, axis=0)
-
-
-top_mean_mse = mean_squared_error(conditional_ert_sample.flatten(), top_mean_simulations.flatten())
-print(f'Top Mean MSE: {top_mean_mse:.4f}')
-
-plt.figure(figsize=(5, 4), dpi=250)
-plt.imshow(top_std_simulations, aspect='auto', origin='lower', cmap='jet')
-plt.colorbar(label='Transfer resistance [Ω]')
-plt.title(f'Standard Deviation', fontsize=universal_fontsize)
-plt.xlabel('ERT Surveys', fontsize=universal_fontsize)
-plt.ylabel('ERT Measurements', fontsize=universal_fontsize)
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_Conditional_ERT.png", bbox_inches='tight')
-plt.show()
-
-plt.figure(figsize=(5, 4), dpi=250)
-plt.imshow(top_p2_5_simulations, aspect='auto', origin='lower', cmap='jet')
-plt.colorbar(label='Transfer resistance [Ω]')
-plt.title(f'2.5th Percentile')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_Conditional_ERT.png", bbox_inches='tight')
-
-plt.show()
-plt.figure(figsize=(5, 4), dpi=250)
-plt.imshow(top_p50_simulations, aspect='auto', origin='lower', cmap='jet')
-plt.colorbar(label='Transfer resistance [Ω]')
-plt.title(f'50th Percentile')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_Conditional_ERT.png", bbox_inches='tight')
-plt.show()
-
-plt.figure(figsize=(5, 4), dpi=250)
-plt.imshow(top_p97_5_simulations, aspect='auto', origin='lower', cmap='jet')
-plt.colorbar(label='Transfer resistance [Ω]')
-plt.title(f'97.5th Percentile')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_Conditional_ERT.png", bbox_inches='tight')
-plt.show()
-
-plt.figure(figsize=(5, 4), dpi=250)
-plt.imshow(top_mean_simulations, aspect='auto', origin='lower', cmap='jet')
-plt.colorbar(label='Transfer resistance [Ω]')
-plt.title(f'Conditional ERT Sample - Top Ensemble Mean')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_Conditional_ERT.png", bbox_inches='tight')
-plt.show()
-
-plt.figure(figsize=(6, 4), dpi=250)
-plt.scatter(top_mean_simulations.flatten(), conditional_ert_sample.flatten(), color='black', s=5)
-min_val = np.min([top_mean_simulations.min(), conditional_ert_sample.min()])
-max_val = np.max([top_mean_simulations.max(), conditional_ert_sample.max()])
-plt.plot([min_val, max_val], [min_val, max_val], color='red', linestyle='--', linewidth=1, label='Identity Line')
-plt.xlabel('E[Inverted ERT]')
-plt.ylabel('Conditional ERT')
-plt.legend()
-
-
-fig, axs = plt.subplots(nrows=1, ncols=3, figsize=(18, 5.5), dpi=250)
-im = axs[0].imshow(top_mean_simulations, aspect='auto', origin='lower', cmap='jet')
-axs[0].set_title(f'E[Inverted ERT]', fontsize=universal_fontsize)
-axs[0].set_xlabel("ERT Surveys", fontsize=universal_fontsize);
-axs[0].set_ylabel("ERT Measurements", fontsize=universal_fontsize);
-axs[0].tick_params(axis='both', which='major', labelsize=universal_fontsize);
-axs[0].set_xticks(np.arange(14))
-axs[0].set_xticklabels(np.arange(1, 15))
-cbar = fig.colorbar(im, ax=axs[0], fraction=0.046, pad=0.04)
-cbar.set_label('Transfer resistance [Ω]', fontsize=universal_fontsize)
-cbar.ax.tick_params(labelsize=universal_fontsize)
-
-# Scatter plot
-min_val = min(np.min(top_mean_simulations), np.min(conditional_ert_sample))
-max_val = max(np.max(top_mean_simulations), np.max(conditional_ert_sample))
-axs[1].plot([min_val, max_val], [min_val, max_val], color='red', linestyle='--', linewidth=1, label='Identity Line')
-axs[1].scatter(top_mean_simulations.flatten(), conditional_ert_sample.flatten(), color='black', s=5)
-axs[1].set_xlabel('E[Inverted ERT]', fontsize=universal_fontsize)
-axs[1].set_ylabel('Conditional ERT', fontsize=universal_fontsize)
-axs[1].legend(fontsize=universal_fontsize)
-axs[1].set_aspect('equal', adjustable='box')
-axs[1].grid(True, which='both', linestyle='--', linewidth=0.3)
-# Distribution comparison (KDE)
-sns.kdeplot(top_mean_simulations.flatten(), color='C1', label='E[Inverted ERT]', ax=axs[2])
-sns.kdeplot(conditional_ert_sample.flatten(), color='C0', label='Conditional ERT', ax=axs[2])
-axs[2].set_xlabel('Transfer resistance [Ω]', fontsize=universal_fontsize)
-axs[2].set_ylabel('Density', fontsize=universal_fontsize)
-axs[2].legend(fontsize=universal_fontsize)
-w_distance = wasserstein_distance(top_mean_simulations.flatten(), conditional_ert_sample.flatten())
-axs[2].set_title(f'Wasserstein Distance: {w_distance:.4f}', fontsize=universal_fontsize)
-plt.tight_layout()
-plt.show()
-
-
-A_top_mean = 0.05
-B_top_mean = 0.01
-WSSE_top_mean, WSE_top_mean = WSSE_metric(A_top_mean, B_top_mean, top_mean_simulations, conditional_ert_sample)
-
-ssim_value_top_mean, ssim_map_top_mean = SSIM_metric(top_mean_simulations, conditional_ert_sample)
-print(f'Top Mean SSIM: {ssim_value_top_mean:.4f}')
-
-plt.figure(figsize=(5, 4), dpi=250)
-plt.imshow(ssim_map_top_mean, cmap='jet', aspect='auto', origin='lower')
-plt.colorbar(label='SSIM')
-plt.title('SSIM Ensemble Mean')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')  
-
-top_ensemble_mode = np.zeros((4693, 14))
-# Determine the global min and max values
-data_min = np.min(top_simulations)
-data_max = np.max(top_simulations)
-x_range = np.linspace(data_min, data_max, 5000)
-
-for i in range(top_simulations.shape[1]):
-    for j in range(top_simulations.shape[2]):
-        if (i * top_simulations.shape[2] + j) % 100 == 0:
-            print(f"Processing point ({i}, {j})")
-        point = top_simulations[:, i, j]
-        kde = stats.gaussian_kde(point)
-        kde_values = kde(x_range)
-        max_index = np.argmax(kde_values)
-        point_mode = x_range[max_index]
-        top_ensemble_mode[i, j] = point_mode
-
-top_mode_mse = mean_squared_error(conditional_ert_sample.flatten(), top_ensemble_mode.flatten())
-print(f'Top Mode MSE: {top_mode_mse:.4f}')
-
-A_top_mode = 0.1
-B_top_mode = 0.01
-WSSE_top_mode, WSE_top_mode = WSSE_metric(A_top_mode, B_top_mode, top_ensemble_mode, conditional_ert_sample)
-
-plt.imshow(WSE_top_mode, cmap='jet', aspect='auto', origin='lower')
-plt.colorbar(label='WSE')
-plt.title('WSE Mode')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')
-
-
-plt.figure(figsize=(5, 4), dpi=250)
-plt.imshow(top_ensemble_mode, aspect='auto', origin='lower', cmap='jet', vmin=v_min, vmax=v_max)
-plt.colorbar(label='Transfer resistance [Ω]')
-plt.title(f'Conditional ERT Sample - Top Ensemble Mode')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_Conditional_ERT.png", bbox_inches='tight')
-plt.show()
-
-plt.figure(figsize=(6, 4), dpi=250)
-plt.scatter(top_ensemble_mode.flatten(), conditional_ert_sample.flatten(), color='black', s=5)
-min_val = np.min([top_ensemble_mode.min(), conditional_ert_sample.min()])
-max_val = np.max([top_ensemble_mode.max(), conditional_ert_sample.max()])
-plt.plot([min_val, max_val], [min_val, max_val], color='red', linestyle='--', linewidth=1, label='Identity Line')
-plt.xlabel('Ensemble Mode')
-plt.ylabel('Conditional ERT')
-plt.title('Top 10 Ensemble Mode - MSE: {:.4f}'.format(top_mode_mse))
-plt.legend()
-
-
-worst_simulations = sim_data[mse_sorted_indices[-3]]   
-worst_parameters = param_data[mse_sorted_indices[-3]]
-
-plt.figure(figsize=(6, 4), dpi=250)
-plt.scatter(worst_simulations.flatten(), conditional_ert_sample.flatten(), color='black', s=5)
-min_val = np.min([worst_simulations.min(), conditional_ert_sample.min()])
-max_val = np.max([worst_simulations.max(), conditional_ert_sample.max()])
-plt.plot([min_val, max_val], [min_val, max_val], color='red', linestyle='--', linewidth=1, label='Identity Line')
-plt.xlabel('Inverted ERT')
-plt.ylabel('Conditional ERT')
-plt.title(f'MSE {all_sorted_mse[47]:.4f} - Rank {47+1}')
-plt.legend()
-
-
-plt.figure(figsize=(6, 4), dpi=250)
-#sns.kdeplot(top_mse_values, label='Top 10 MSE Simulations', color='orange')
-sns.kdeplot(mse_distribution, label='All Simulations (50)', color='blue')
-plt.axvline(0, linewidth=1, linestyle='--', color='black')
-plt.xlabel('MSE')
-plt.ylabel('Density')
-plt.title('Distribution of MSE for Top 10 Simulations')
-plt.legend()
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_Top_10_MSE_Distribution.png", bbox_inches='tight')
-plt.show()
-
-for i in range(29):
-    plt.figure(figsize=(6, 4), dpi=250)
-    #plt.hist(param_data[:,i,:], bins=20, alpha=0.5, label='All Simulations Parameters', color='blue')
-    #plt.hist(top_parameters[:,i,:], bins=20, alpha=0.5, label='Top 10 Simulations Parameters', color='orange')
-    sns.kdeplot(top_parameters[:,i,:].flatten(), color='blue')
-    #sns.kdeplot(param_data[:,i,:].flatten(), label='All Sim', color='blue')
-    cond_param_true = conditional_param_sample[i]
-    plt.axvline(cond_param_true, color='red', linestyle='--', label='True Value')
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-    plt.xlabel(names[i])
-    plt.ylabel('Density')
-
-
-
-for sim_real in range(mse_sample_size):
-    plt.figure(figsize=(6, 4), dpi=250)
-    plt.scatter(top_simulations[sim_real].flatten(), conditional_ert_sample.flatten(), color='black', s=5)
-    min_val = np.min([top_simulations[sim_real].min(), conditional_ert_sample.min()])
-    max_val = np.max([top_simulations[sim_real].max(), conditional_ert_sample.max()])
-    plt.plot([min_val, max_val], [min_val, max_val], color='red', linestyle='--', linewidth=1, label='Identity Line')
-    plt.xlabel('Inverted ERT')
-    plt.ylabel('Conditional ERT')
-    plt.title(f'MSE {top_mse_values[sim_real]:.4f} - Rank {sim_real+1}')
-    plt.legend()
-
-for rank, sim_real in enumerate(sorted_indices):
-    fig, axs = plt.subplots(nrows=1, ncols=3, figsize=(18, 5.5), dpi=250)
-    im = axs[0].imshow(sim_data[sim_real, :, :], aspect='auto', origin='lower', cmap='jet')
-    #axs[row, 0].set_title(f'Sim {idx}: WSSE={wsse_total[idx]:.2f}', fontsize=universal_fontsize)
-    axs[0].set_title(f'Sim {sim_real}', fontsize=universal_fontsize)
-    axs[0].set_xlabel("ERT Surveys", fontsize=universal_fontsize)
-    axs[0].set_ylabel("ERT Measurements", fontsize=universal_fontsize)
-    axs[0].tick_params(axis='both', which='major', labelsize=universal_fontsize)
-    axs[0].set_xticks(np.arange(14))
-    axs[0].set_xticklabels(np.arange(1, 15))
-    cbar = fig.colorbar(im, ax=axs[0], fraction=0.046, pad=0.04)
-    cbar.set_label('Transfer resistance [Ω]', fontsize=universal_fontsize)
-    cbar.ax.tick_params(labelsize=universal_fontsize)
-
-    # Scatter plot
-    min_val = min(np.min(sim_data[sim_real, :, :]), np.min(conditional_ert_sample))
-    max_val = max(np.max(sim_data[sim_real, :, :]), np.max(conditional_ert_sample))
-    axs[1].plot([min_val, max_val], [min_val, max_val], color='red', linestyle='--', linewidth=1, label='Identity Line')
-    axs[1].scatter(sim_data[sim_real, :, :].flatten(), conditional_ert_sample.flatten(), color='black', s=5)
-    axs[1].set_xlabel('Inverted ERT [Ω]', fontsize=universal_fontsize)
-    axs[1].set_ylabel('Conditional ERT [Ω]', fontsize=universal_fontsize)
-    axs[1].legend(fontsize=universal_fontsize)
-    axs[1].set_aspect('equal', adjustable='box')
-    axs[1].grid(True, which='both', linestyle='--', linewidth=0.3)
-    # Distribution comparison (KDE)
-    sns.kdeplot(sim_data[sim_real, :, :].flatten(), color='C1', label='Inverted ERT', ax=axs[2])
-    sns.kdeplot(conditional_ert_sample.flatten(), color='C0', label='Conditional ERT', ax=axs[2])
-    axs[2].set_xlabel('Transfer resistance [Ω]', fontsize=universal_fontsize)
-    axs[2].set_ylabel('Density', fontsize=universal_fontsize)
-    axs[2].legend(fontsize=universal_fontsize)
-    w_distance = wasserstein_distance(sim_data[sim_real, :, :].flatten(), conditional_ert_sample.flatten())
-    axs[2].set_title(f'Wasserstein Distance: {w_distance:.4f}', fontsize=universal_fontsize)
-    plt.tight_layout()
-    plt.show()
-
-best_mse = np.min(mse_distribution)
-best_mse_idx = np.argmin(mse_distribution)
-best_sim_data = sim_data[best_mse_idx]
-best_param_data = param_data[best_mse_idx].reshape(-1, 1)
-true_params = conditional_param_sample.reshape(-1, 1)
-param_relative_error = np.abs((best_param_data - true_params) / (true_params + 1e-8)) * 100
-WSSE_best = np.sum((best_sim_data - conditional_ert_sample) ** 2) / (conditional_ert_sample.shape[0] * conditional_ert_sample.shape[1])
-
-
-A_best = 0.05
-B_best = 0.1
-WSSE_best, WSE_best = WSSE_metric(A_best, B_best, best_sim_data, conditional_ert_sample)
-
-from skimage.metrics import structural_similarity as ssim
-
-
-def SSIM_metric(d_est, d_obs):
-    """
-    Compute the Structural Similarity Index (SSIM) between inverted model predictions
-    and simulated conditional data.
-    """
-    # Calculate data_range
-    data_range = np.max([d_obs.max(), d_est.max()]) - np.min([d_obs.min(), d_est.min()])
-    ssim_value, ssim_map = ssim(d_obs, d_est, data_range=data_range, full=True)
-    return ssim_value, ssim_map
-
-# Compute SSIM
-ssim_value_best, ssim_map_best = SSIM_metric(best_sim_data, conditional_ert_sample)
-
-# Print SSIM value
-print(f"SSIM Value: {ssim_value_best}")
-
-plt.imshow(ssim_map_best, aspect='auto', origin='lower', cmap='jet')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')
-plt.title('SSIM Map')
-plt.colorbar(label='SSIM Scores')
-plt.show()
-
-
-df_best = pd.DataFrame({
-    'Parameter': names,
-    'Best Parameter Value': best_param_data.flatten(),
-    'True Parameter Value': true_params.flatten(),
-    'Relative Error (%)': param_relative_error.flatten()
-})
-df_best.to_csv(f'Best_Sim_Parameters_{conditional_idx}.csv', index=False)
-
-best_relative_error = np.abs((best_sim_data - conditional_ert_sample) / (conditional_ert_sample + 1e-8)) * 100
-avg_best_relative_error = np.mean(best_relative_error)
-
-plt.figure(figsize=(5, 4), dpi=250)
-plt.imshow(WSSE_best, aspect='auto', origin='lower', cmap='inferno')
-plt.colorbar(label='WSSE')
-plt.title(f'Best WSSE (MSE: {WSE_best:.4f})')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_Min_Relative_Error.png", bbox_inches='tight')
-plt.show()
-
-plt.figure(figsize=(5, 4), dpi=250)
-plt.imshow(best_sim_data, aspect='auto', origin='lower', cmap='jet')
-plt.colorbar(label='Transfer resistance [Ω]')
-plt.title(f'Best MSE Simulation (Index: {best_mse_idx}, MSE: {best_mse:.4f})')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_Min_MSE_Simulation.png", bbox_inches='tight')
-plt.show()
-
-plt.figure(figsize=(5, 4), dpi=250)
-plt.imshow(conditional_ert_sample, aspect='auto', origin='lower', cmap='jet', vmin=v_min, vmax=v_max)
-plt.colorbar(label='Transfer resistance [Ω]')
-plt.title(f'Conditional ERT Sample')
-plt.xlabel('ERT Surveys')
-plt.ylabel('ERT Measurements')
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_Conditional_ERT.png", bbox_inches='tight')
-plt.show()
-
-plt.figure(figsize=(6, 4), dpi=250)
-plt.scatter(best_sim_data.flatten(), conditional_ert_sample.flatten(), color='black', s=5, label='Ensemble Mean')
-min_val = np.min([best_sim_data.min(), conditional_ert_sample.min()])
-max_val = np.max([best_sim_data.max(), conditional_ert_sample.max()])
-plt.plot([min_val, max_val], [min_val, max_val], color='red', linestyle='--', linewidth=1, label='y=x Line')
-plt.xlabel('Inverted ERT')
-plt.ylabel('Conditional ERT')
-plt.title('Ensemble Mean vs. Conditional ERT')
-plt.legend()
-
-
-plt.figure(figsize=(6, 4), dpi=250)
-sns.kdeplot(best_sim_data.flatten(), label='Best Simulation Fit', color='orange')
-sns.kdeplot(conditional_ert_sample.flatten(), label='Conditional ERT Sample', color='blue')
-#sns.kdeplot(mse_distribution, label='All Simulations', color='blue')
-plt.xlabel('Transfer Resistance [Ω]')
-plt.ylabel('Density')
-plt.legend()
-
-#%% Create CDM Model Pipeline for new conditional data
-import joblib
-from sklearn.preprocessing import MinMaxScaler  
-from scipy.io import loadmat
-import numpy as np
-import torch
-from torch.utils.data import DataLoader, TensorDataset
-import torch.nn as nn
-import torch.optim as optim
-import matplotlib.pyplot as plt
-import seaborn as sns
