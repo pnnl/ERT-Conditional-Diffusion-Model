@@ -33,4 +33,3 @@ The ERTDataHandler assumes .srv files contain data in column 5 starting after 25
 PFLOTRAN usage:
 
 This package writes input files (does not run PFLOTRAN). You can run PFLOTRAN externally and then use gather-data to collect outputs.
-Development:
