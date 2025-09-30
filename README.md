@@ -17,7 +17,7 @@ Requirements:
 
 Python 3.10+ recommended
 Optional: PFLOTRAN installed and accessible for running simulations
-Dependencies listed in requirements.txt
+
 
 Quickstart:
 
