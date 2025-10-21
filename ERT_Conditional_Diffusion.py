@@ -571,7 +571,7 @@ forward_runner = ert_utils.ForwardModelRunner(
     pflotran_sim, 
     None,
     ert_handler,
-    pflotran_path="/Users/hern856/pflotran/src/pflotran/pflotran"
+    pflotran_path="/Users/pflotran/src/pflotran/pflotran"
 )
 
 sim_manager = SimulationManager(max_simulation_time=3600)
@@ -633,7 +633,7 @@ for param in range(29):
 
 #%% Run simulations for the generated parameters
 
-results_dir = f'/Users/hern856/Codes/Pflotran_Sim/Transformer Surrogate/Inversion_results/Conditional_Sample_{conditional_idx}'
+results_dir = f'/Inversion_results/Conditional_Sample_{conditional_idx}'
 results_dir = Path(results_dir)
 if not results_dir.exists():
     results_dir.mkdir(parents=True)
@@ -645,7 +645,7 @@ forward_runner = ert_utils.ForwardModelRunner(
     pflotran_sim, 
     None,
     ert_handler,
-    pflotran_path="/Users/hern856/pflotran/src/pflotran/pflotran"
+    pflotran_path="/pflotran/pflotran"
 )
 
 sim_manager = SimulationManager(max_simulation_time=3600)
@@ -695,7 +695,7 @@ for (i, params) in enumerate(cond_paramts):
 
 #%% Load and visualize the simulation results
 
-folder_path = "/Users/hern856/Codes/Pflotran_Sim/Transformer Surrogate/simulation_results_20250731_110916_Conditional_idx_0"
+folder_path = "/simulation_results_20250731_110916_Conditional_idx_0"
 sim_ert, sim_param = load_simulation_data(folder_path,uncertainty_samples)
 
 print("Data shape:", sim_ert.shape)
@@ -893,7 +893,6 @@ plt.xlabel('Transfer resistance [Ω]')
 plt.ylabel('Density')
 plt.legend()
 plt.title('Distribution of MSE between Ensemble and Conditional ERT')
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_distributions.png", bbox_inches='tight')
 plt.show()
 
 w_distance_mean = wasserstein_distance(ensemble_mean.flatten(), conditional_ert_sample.flatten())
@@ -910,7 +909,6 @@ plt.scatter(ensemble_mean.flatten(), conditional_ert_sample.flatten(), color='bl
 plt.xlabel('Ensemble Mean')
 plt.ylabel('Conditional ERT')
 plt.title('Ensemble Mean vs. Conditional ERT')  
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_Scatter_Mean.png", bbox_inches='tight')
 plt.show()
 
 plt.figure(figsize=(6, 4), dpi=250)
@@ -921,7 +919,6 @@ plt.scatter(ensemble_mode.flatten(), conditional_ert_sample.flatten(), color='bl
 plt.xlabel('Ensemble Mode')
 plt.ylabel('Conditional ERT')
 plt.title('Ensemble Modes vs. Conditional ERT')
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_Scatter_Mode.png", bbox_inches='tight')
 plt.show()
 
 v_min = np.min([ensemble_mean.min(), conditional_ert_sample.min()])
@@ -938,7 +935,6 @@ plt.axvline(0, linewidth=1, linestyle='--', color='black')
 plt.xlabel('MSE')
 plt.ylabel('Density')
 plt.title('Distribution of MSE between ERT Simulations and Conditional ERT')
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_MSE_distribution.png", bbox_inches='tight')
 plt.show()
 
 mse_mode = mean_squared_error(conditional_ert_sample.flatten(), ensemble_mode.flatten())
@@ -1035,7 +1031,6 @@ cbar8 = plt.colorbar(im8, ax=axs[2, 2], shrink=1.0, aspect=20)
 cbar8.set_label('Transfer resistance [Ω]', fontsize=16)
 cbar8.ax.tick_params(labelsize=16)
 plt.tight_layout()
-#plt.savefig(f"{results_dir}/ert_cond_{conditional_idx}_reorganized_results.png", bbox_inches='tight', dpi=250)
 plt.show()
 
 #%% Uncertainty evaluation
@@ -1083,8 +1078,6 @@ if pred_params_batches:
 else:
     print("No valid parameter sets generated")
 
-#np.save("Uncertainty_params.npy", pred_params_all)
-#np.save("true_params.npy", true_params_all)
 
 generated_params_np = np.load("Uncertainty_params.npy")
 true_params_np = np.load("true_params.npy")
@@ -1187,7 +1180,6 @@ plt.annotate(metrics_box,
             ha='center',
             va='center',
             fontsize=10)
-#plt.savefig(f"General_accuracy_plot.png", bbox_inches='tight')
 plt.show()
 
 
@@ -1267,7 +1259,6 @@ for param_idx in range(29):
                 ha='center',
                 va='center',
                 fontsize=10)
-    #plt.savefig(f"Accuracy_plot_{param_idx}.png", bbox_inches='tight')
     plt.show()
 
 param_accuracy = np.array(param_accuracy)
