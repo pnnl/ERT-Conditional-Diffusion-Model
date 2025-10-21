@@ -330,7 +330,7 @@ class ForwardModelRunner:
         self.parameter_sampler = parameter_sampler
         self.ert_handler = ert_handler
         if pflotran_path is None:
-            self.pflotran_path = "/Users/hern856/pflotran/src/pflotran/pflotran"
+            self.pflotran_path = "pflotran/src/pflotran/pflotran"
         else:
             self.pflotran_path = pflotran_path
 
